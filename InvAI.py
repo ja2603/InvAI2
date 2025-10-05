@@ -20,6 +20,7 @@ st.markdown("""
     .css-1vq4p4l, .css-1poimk8 { background: #0f0f0f !important; border-radius: 12px !important; padding: 12px !important; }
     .dataframe tbody tr:hover { background-color: #2e2e2e !important; }
     .plotly-graph-div { background: #070707 !important; }
+    [data-testid="stSidebarCollapseButton"] { display: none !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -145,39 +146,97 @@ def professional_suggestions_pro(row_dict, total_income=500000, pre_2024_buy=Fal
 
     strategies = []
     if gain <= 0:
-        return [{'Strategy': 'No Tax Liability', 'Tax': 0, 'Savings': 0, 'Conditions': 'Loss or zero gain', 'Score': 0}], 0, 'No Tax Liability'
+        return [{'Strategy': 'No Tax Liability', 'Tax': 0, 'Savings': 0, 'Conditions': 'No tax liability applicable due to zero or negative gain; review potential carry-forward of losses for future tax offsets.', 'Score': 0}], 0, 'No Tax Liability'
 
     # Base tax calculations
     if asset_type in ['realestate', 'land', 'property']:
         base_tax = gain * REALESTATE_LTCG_RATE_NO_INDEX * (1 + CESS) if gain_type == 'LTCG' else gain * 0.1 * (1 + CESS)
-        strategies.append({'Strategy': 'Base Tax', 'Tax': round(base_tax,2), 'Savings': 0, 'Conditions': 'No action'})
-        strategies.append({'Strategy': 'Sec 54EC Bonds', 'Tax': round(base_tax * 0.6,2), 'Savings': round(base_tax * 0.4,2), 'Conditions': 'Invest up to ₹50L in eligible bonds'})
-        strategies.append({'Strategy': 'Sec 54/54F Reinvestment', 'Tax': 0, 'Savings': round(base_tax,2), 'Conditions': 'Reinvest in residential property'})
+        strategies.append({
+            'Strategy': 'Base Tax', 
+            'Tax': round(base_tax, 2), 
+            'Savings': 0, 
+            'Conditions': 'Proceed with standard tax liability calculation without additional exemptions or strategies.'
+        })
+        strategies.append({
+            'Strategy': 'Sec 54EC Bonds', 
+            'Tax': round(base_tax * 0.6, 2), 
+            'Savings': round(base_tax * 0.4, 2), 
+            'Conditions': 'Invest up to ₹50 lakh in notified capital gain bonds within 6 months of the sale to avail tax exemptions under Section 54EC.'
+        })
+        strategies.append({
+            'Strategy': 'Sec 54/54F Reinvestment', 
+            'Tax': 0, 
+            'Savings': round(base_tax, 2), 
+            'Conditions': 'Reinvest the entire capital gains (or sale proceeds for Sec 54F) in a residential property within the specified period (2 years for purchase or 3 years for construction) to claim full exemption.'
+        })
     elif asset_type in ['equity', 'mutualfund', 'mf', 'stock']:
         if gain_type == 'STCG':
             base_tax = gain * EQUITY_STCG_RATE * (1 + CESS)
-            strategies.append({'Strategy': 'Base Tax', 'Tax': round(base_tax,2), 'Savings': 0, 'Conditions': 'No action'})
-            strategies.append({'Strategy': 'Hold >12 Months', 'Tax': round(gain * EQUITY_LTCG_RATE * (1 + CESS),2), 'Savings': round(gain * (EQUITY_STCG_RATE - EQUITY_LTCG_RATE) * (1 + CESS),2), 'Conditions': 'Convert to LTCG by holding'})
+            strategies.append({
+                'Strategy': 'Base Tax', 
+                'Tax': round(base_tax, 2), 
+                'Savings': 0, 
+                'Conditions': 'Proceed with standard short-term capital gains tax calculation at the applicable rate without additional exemptions.'
+            })
+            strategies.append({
+                'Strategy': 'Hold >12 Months', 
+                'Tax': round(gain * EQUITY_LTCG_RATE * (1 + CESS), 2), 
+                'Savings': round(gain * (EQUITY_STCG_RATE - EQUITY_LTCG_RATE) * (1 + CESS), 2), 
+                'Conditions': 'Extend the holding period beyond 12 months to qualify for long-term capital gains tax rate, which is lower than the short-term rate.'
+            })
             if st_loss < 0:
-                strategies.append({'Strategy': 'Offset ST Losses', 'Tax': round(max(0, gain + st_loss) * EQUITY_STCG_RATE * (1 + CESS),2),'Savings': round(base_tax - max(0, gain + st_loss) * EQUITY_STCG_RATE * (1 + CESS),2),'Conditions': 'Use short-term losses to offset'})
+                strategies.append({
+                    'Strategy': 'Offset ST Losses', 
+                    'Tax': round(max(0, gain + st_loss) * EQUITY_STCG_RATE * (1 + CESS), 2),
+                    'Savings': round(base_tax - max(0, gain + st_loss) * EQUITY_STCG_RATE * (1 + CESS), 2),
+                    'Conditions': 'Utilize available short-term capital losses to offset short-term capital gains, reducing taxable income.'
+                })
         else:
             taxable = max(0, gain - EQUITY_LTCG_EXEMPTION)
             base_tax = taxable * EQUITY_LTCG_RATE * (1 + CESS)
-            strategies.append({'Strategy': 'Base Tax', 'Tax': round(base_tax,2), 'Savings': 0, 'Conditions': 'No action'})
+            strategies.append({
+                'Strategy': 'Base Tax', 
+                'Tax': round(base_tax, 2), 
+                'Savings': 0, 
+                'Conditions': 'Proceed with standard long-term capital gains tax calculation, applying the ₹1.25 lakh exemption for equity gains.'
+            })
             if lt_loss < 0:
-                strategies.append({'Strategy': 'Offset LT Losses', 'Tax': round(max(0, gain + lt_loss - EQUITY_LTCG_EXEMPTION) * EQUITY_LTCG_RATE * (1 + CESS),2), 'Savings': round(base_tax - max(0, gain + lt_loss - EQUITY_LTCG_EXEMPTION) * EQUITY_LTCG_RATE * (1 + CESS),2), 'Conditions': 'Use LT losses to offset'})
-            strategies.append({'Strategy': 'Tax Harvesting', 'Tax': round(base_tax * 0.85,2), 'Savings': round(base_tax * 0.15,2), 'Conditions': 'Sell losers to optimize exemption'})
+                strategies.append({
+                    'Strategy': 'Offset LT Losses', 
+                    'Tax': round(max(0, gain + lt_loss - EQUITY_LTCG_EXEMPTION) * EQUITY_LTCG_RATE * (1 + CESS), 2), 
+                    'Savings': round(base_tax - max(0, gain + lt_loss - EQUITY_LTCG_EXEMPTION) * EQUITY_LTCG_RATE * (1 + CESS), 2), 
+                    'Conditions': 'Utilize available long-term capital losses to offset long-term capital gains, reducing taxable income after applying the exemption.'
+                })
+            strategies.append({
+                'Strategy': 'Tax Harvesting', 
+                'Tax': round(base_tax * 0.85, 2), 
+                'Savings': round(base_tax * 0.15, 2), 
+                'Conditions': 'Strategically sell underperforming assets to realize losses, optimizing the use of the ₹1.25 lakh LTCG exemption annually.'
+            })
     else:
         base_tax = gain * 0.15 * (1 + CESS)
-        strategies.append({'Strategy': 'Base Tax', 'Tax': round(base_tax,2), 'Savings': 0, 'Conditions': 'No action'})
+        strategies.append({
+            'Strategy': 'Base Tax', 
+            'Tax': round(base_tax, 2), 
+            'Savings': 0, 
+            'Conditions': 'Proceed with standard tax calculation for other assets at the applicable rate without specific exemptions.'
+        })
 
     # Simple deterministic scoring to rank strategies
     for s in strategies:
-        feasibility = {'Base Tax':1.0, 'Sec 54EC Bonds':0.7, 'Sec 54/54F Reinvestment':0.5, 'Hold >12 Months':0.9, 'Offset ST Losses':0.9, 'Offset LT Losses':0.9, 'Tax Harvesting':0.6}.get(s['Strategy'], 0.6)
-        risk_adj = {'Low':1.0, 'Medium':0.8, 'High':0.6}.get(risk_tolerance, 0.8)
-        impact = min(gain / max(portfolio_size,1), 1.0)
-        score = (s['Savings'] if s['Savings'] else 0) * feasibility * risk_adj * (0.5 + 0.5*impact)
-        s['Score'] = round(score,2)
+        feasibility = {
+            'Base Tax': 1.0, 
+            'Sec 54EC Bonds': 0.7, 
+            'Sec 54/54F Reinvestment': 0.5, 
+            'Hold >12 Months': 0.9, 
+            'Offset ST Losses': 0.9, 
+            'Offset LT Losses': 0.9, 
+            'Tax Harvesting': 0.6
+        }.get(s['Strategy'], 0.6)
+        risk_adj = {'Low': 1.0, 'Medium': 0.8, 'High': 0.6}.get(risk_tolerance, 0.8)
+        impact = min(gain / max(portfolio_size, 1), 1.0)
+        score = (s['Savings'] if s['Savings'] else 0) * feasibility * risk_adj * (0.5 + 0.5 * impact)
+        s['Score'] = round(score, 2)
     strategies = sorted(strategies, key=lambda x: x['Score'], reverse=True)
     best = strategies[0]
     return strategies, best['Tax'], best['Strategy']
