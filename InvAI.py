@@ -33,6 +33,7 @@ EQUITY_STCG_RATE = 0.20
 REALESTATE_LTCG_RATE_NO_INDEX = 0.125
 REALESTATE_LTCG_RATE_INDEXED = 0.20
 CESS = 0.04
+SEC80C_DEDUCTION_LIMIT = 150000
 
 # --- Helpers (cached for performance) ---
 @st.cache_data
@@ -100,10 +101,10 @@ def build_lots_from_df(df):
                 gain = matched_qty * sell_price - cost
                 holding_days = (row['trade_date'] - lot['date']).days
                 asset_type = str(row['asset_type']).lower()
-                gain_type = 'LTCG' if ((asset_type in ['realestate', 'land', 'property'] and holding_days > 730) or 
-                                      (holding_days > 365 and asset_type not in ['realestate', 'land', 'property'])) else 'STCG'
+                gain_type = 'LTCG' if ((asset_type in ['realestate', 'land', 'property', 'agricultural_land'] and holding_days > 730) or 
+                                      (holding_days > 365 and asset_type not in ['realestate', 'land', 'property', 'agricultural_land'])) else 'STCG'
                 tax = 0.0
-                if asset_type in ['realestate', 'land', 'property']:
+                if asset_type in ['realestate', 'land', 'property', 'agricultural_land']:
                     ltcg_per_unit, _ = calculate_indexed_ltcg_basic(lot['price'], lot['date'].year, row['trade_date'].year, sell_price)
                     tax_per_unit_no_index = max(0, (sell_price - lot['price'])) * REALESTATE_LTCG_RATE_NO_INDEX * (1 + CESS)
                     tax_per_unit_indexed = max(0, ltcg_per_unit) * REALESTATE_LTCG_RATE_INDEXED * (1 + CESS)
@@ -149,7 +150,7 @@ def professional_suggestions_pro(row_dict, total_income=500000, pre_2024_buy=Fal
         return [{'Strategy': 'No Tax Liability', 'Tax': 0, 'Savings': 0, 'Conditions': 'No tax liability applicable due to zero or negative gain; review potential carry-forward of losses for future tax offsets.', 'Score': 0}], 0, 'No Tax Liability'
 
     # Base tax calculations
-    if asset_type in ['realestate', 'land', 'property']:
+    if asset_type in ['realestate', 'land', 'property', 'agricultural_land']:
         base_tax = gain * REALESTATE_LTCG_RATE_NO_INDEX * (1 + CESS) if gain_type == 'LTCG' else gain * 0.1 * (1 + CESS)
         strategies.append({
             'Strategy': 'Base Tax', 
@@ -169,6 +170,30 @@ def professional_suggestions_pro(row_dict, total_income=500000, pre_2024_buy=Fal
             'Savings': round(base_tax, 2), 
             'Conditions': 'Reinvest the entire capital gains (or sale proceeds for Sec 54F) in a residential property within the specified period (2 years for purchase or 3 years for construction) to claim full exemption.'
         })
+        # New: Capital Gains Account Scheme (CGAS)
+        if gain_type == 'LTCG':
+            strategies.append({
+                'Strategy': 'Capital Gains Account Scheme', 
+                'Tax': 0, 
+                'Savings': round(base_tax, 2), 
+                'Conditions': 'Deposit unutilized capital gains in a Capital Gains Account Scheme before the tax filing deadline to defer tax liability until reinvestment.'
+            })
+        # New: Sec 54EA/54EB Bonds for pre-2000 assets
+        if gain_type == 'LTCG' and buy_year < 2000:
+            strategies.append({
+                'Strategy': 'Sec 54EA/54EB Bonds', 
+                'Tax': round(base_tax * 0.5, 2), 
+                'Savings': round(base_tax * 0.5, 2), 
+                'Conditions': 'Invest capital gains in specified bonds under Section 54EA/54EB within 6 months to claim LTCG exemption (applicable for assets purchased before 2000).'
+            })
+        # New: Sec 54B Reinvestment for agricultural land
+        if asset_type == 'agricultural_land' and gain_type == 'LTCG':
+            strategies.append({
+                'Strategy': 'Sec 54B Reinvestment', 
+                'Tax': 0, 
+                'Savings': round(base_tax, 2), 
+                'Conditions': 'Reinvest sale proceeds in another agricultural land within 2 years to claim exemption under Section 54B.'
+            })
     elif asset_type in ['equity', 'mutualfund', 'mf', 'stock']:
         if gain_type == 'STCG':
             base_tax = gain * EQUITY_STCG_RATE * (1 + CESS)
@@ -190,6 +215,15 @@ def professional_suggestions_pro(row_dict, total_income=500000, pre_2024_buy=Fal
                     'Tax': round(max(0, gain + st_loss) * EQUITY_STCG_RATE * (1 + CESS), 2),
                     'Savings': round(base_tax - max(0, gain + st_loss) * EQUITY_STCG_RATE * (1 + CESS), 2),
                     'Conditions': 'Utilize available short-term capital losses to offset short-term capital gains, reducing taxable income.'
+                })
+            # New: Dividend Reinvestment for mutual funds (applied here if asset_type is mutualfund/mf)
+            if asset_type in ['mutualfund', 'mf']:
+                reduced_tax = base_tax * 0.9  # Assume 10% tax deferral via reinvestment
+                strategies.append({
+                    'Strategy': 'Dividend Reinvestment', 
+                    'Tax': round(reduced_tax, 2), 
+                    'Savings': round(base_tax - reduced_tax, 2), 
+                    'Conditions': 'Reinvest mutual fund dividends to purchase additional units, deferring tax liability and enhancing future capital gains.'
                 })
         else:
             taxable = max(0, gain - EQUITY_LTCG_EXEMPTION)
@@ -213,6 +247,15 @@ def professional_suggestions_pro(row_dict, total_income=500000, pre_2024_buy=Fal
                 'Savings': round(base_tax * 0.15, 2), 
                 'Conditions': 'Strategically sell underperforming assets to realize losses, optimizing the use of the ₹1.25 lakh LTCG exemption annually.'
             })
+            # New: Dividend Reinvestment for mutual funds (applied here if asset_type is mutualfund/mf)
+            if asset_type in ['mutualfund', 'mf']:
+                reduced_tax = base_tax * 0.9  # Assume 10% tax deferral via reinvestment
+                strategies.append({
+                    'Strategy': 'Dividend Reinvestment', 
+                    'Tax': round(reduced_tax, 2), 
+                    'Savings': round(base_tax - reduced_tax, 2), 
+                    'Conditions': 'Reinvest mutual fund dividends to purchase additional units, deferring tax liability and enhancing future capital gains.'
+                })
     else:
         base_tax = gain * 0.15 * (1 + CESS)
         strategies.append({
@@ -220,6 +263,18 @@ def professional_suggestions_pro(row_dict, total_income=500000, pre_2024_buy=Fal
             'Tax': round(base_tax, 2), 
             'Savings': 0, 
             'Conditions': 'Proceed with standard tax calculation for other assets at the applicable rate without specific exemptions.'
+        })
+
+    # New: Sec 80C Deductions (applied to all assets if total_income > 150000)
+    if total_income > SEC80C_DEDUCTION_LIMIT:
+        deduction = min(gain, SEC80C_DEDUCTION_LIMIT)
+        rate = EQUITY_LTCG_RATE if asset_type in ['equity', 'mutualfund', 'mf', 'stock'] and gain_type == 'LTCG' else (REALESTATE_LTCG_RATE_NO_INDEX if asset_type in ['realestate', 'land', 'property', 'agricultural_land'] else 0.15)
+        reduced_tax = max(0, gain - deduction) * rate * (1 + CESS)
+        strategies.append({
+            'Strategy': 'Sec 80C Deductions', 
+            'Tax': round(reduced_tax, 2), 
+            'Savings': round(base_tax - reduced_tax, 2), 
+            'Conditions': 'Invest up to ₹1.5 lakh of gains in Section 80C instruments (e.g., ELSS, PPF) to reduce overall taxable income.'
         })
 
     # Simple deterministic scoring to rank strategies
@@ -231,7 +286,12 @@ def professional_suggestions_pro(row_dict, total_income=500000, pre_2024_buy=Fal
             'Hold >12 Months': 0.9, 
             'Offset ST Losses': 0.9, 
             'Offset LT Losses': 0.9, 
-            'Tax Harvesting': 0.6
+            'Tax Harvesting': 0.6,
+            'Sec 54EA/54EB Bonds': 0.5,
+            'Sec 54B Reinvestment': 0.6,
+            'Sec 80C Deductions': 0.9,
+            'Capital Gains Account Scheme': 0.7,
+            'Dividend Reinvestment': 0.6
         }.get(s['Strategy'], 0.6)
         risk_adj = {'Low': 1.0, 'Medium': 0.8, 'High': 0.6}.get(risk_tolerance, 0.8)
         impact = min(gain / max(portfolio_size, 1), 1.0)
